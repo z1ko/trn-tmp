@@ -13,12 +13,13 @@ class GeneralizedTRN(nn.Module):
     def __init__(self, args):
         super(GeneralizedTRN, self).__init__()
         self.hidden_size = args.hidden_size
-        self.enc_steps = args.enc_steps
-        self.dec_steps = args.dec_steps
-        self.num_classes = args.num_classes
+        self.enc_steps = 200
+        self.dec_steps = 15
         self.dropout = args.dropout
 
+        self.num_classes = args.num_classes
         self.feature_extractor = build_feature_extractor(args)
+        
         # TODO: Support more fusion methods
         if True:
             self.future_size = self.feature_extractor.fusion_size
@@ -36,8 +37,8 @@ class GeneralizedTRN(nn.Module):
 
         self.classifier = nn.Linear(self.hidden_size, self.num_classes)
 
-    def encoder(self, camera_input, sensor_input, future_input, enc_hx, enc_cx):
-        fusion_input = self.feature_extractor(camera_input, sensor_input)
+    def encoder(self, x, future_input, enc_hx, enc_cx):
+        fusion_input = self.feature_extractor(x)
         fusion_input = torch.cat((fusion_input, future_input), 1)
         enc_hx, enc_cx = \
                 self.enc_cell(self.enc_drop(fusion_input), (enc_hx, enc_cx))
@@ -47,20 +48,21 @@ class GeneralizedTRN(nn.Module):
     def decoder(self, fusion_input, dec_hx, dec_cx):
         dec_hx, dec_cx = \
                 self.dec_cell(self.dec_drop(fusion_input), (dec_hx, dec_cx))
+        
         dec_score = self.classifier(self.dec_drop(dec_hx))
         return dec_hx, dec_cx, dec_score
 
-    def step(self, camera_input, sensor_input, future_input, enc_hx, enc_cx):
+    def step(self, x, _, future_input, enc_hx, enc_cx):
         # Encoder -> time t
         enc_hx, enc_cx, enc_score = \
-                self.encoder(camera_input, sensor_input, future_input, enc_hx, enc_cx)
+                self.encoder(x, future_input, enc_hx, enc_cx)
 
         # Decoder -> time t + 1
         dec_score_stack = []
         dec_hx = self.hx_trans(enc_hx)
         dec_cx = self.cx_trans(enc_cx)
-        fusion_input = camera_input.new_zeros((camera_input.shape[0], self.hidden_size))
-        future_input = camera_input.new_zeros((camera_input.shape[0], self.future_size))
+        fusion_input = x.new_zeros((x.shape[0], self.hidden_size))
+        future_input = x.new_zeros((x.shape[0], self.future_size))
         for dec_step in range(self.dec_steps):
             dec_hx, dec_cx, dec_score = self.decoder(fusion_input, dec_hx, dec_cx)
             dec_score_stack.append(dec_score)
@@ -70,19 +72,19 @@ class GeneralizedTRN(nn.Module):
 
         return future_input, enc_hx, enc_cx, enc_score, dec_score_stack
 
-    def forward(self, camera_inputs, sensor_inputs):
-        batch_size = camera_inputs.shape[0]
-        enc_hx = camera_inputs.new_zeros((batch_size, self.hidden_size))
-        enc_cx = camera_inputs.new_zeros((batch_size, self.hidden_size))
-        future_input = camera_inputs.new_zeros((batch_size, self.future_size))
+    def forward(self, x):
+
+        batch_size = x.shape[0]
+        enc_hx = x.new_zeros((batch_size, self.hidden_size))
+        enc_cx = x.new_zeros((batch_size, self.hidden_size))
+        future_input = x.new_zeros((batch_size, self.future_size))
         enc_score_stack = []
         dec_score_stack = []
 
         # Encoder -> time t
         for enc_step in range(self.enc_steps):
             enc_hx, enc_cx, enc_score = self.encoder(
-                camera_inputs[:, enc_step],
-                sensor_inputs[:, enc_step],
+                x[:, enc_step],
                 future_input, enc_hx, enc_cx,
             )
             enc_score_stack.append(enc_score)
@@ -90,8 +92,8 @@ class GeneralizedTRN(nn.Module):
             # Decoder -> time t + 1
             dec_hx = self.hx_trans(enc_hx)
             dec_cx = self.cx_trans(enc_cx)
-            fusion_input = camera_inputs.new_zeros((batch_size, self.hidden_size))
-            future_input = camera_inputs.new_zeros((batch_size, self.future_size))
+            fusion_input = x.new_zeros((batch_size, self.hidden_size))
+            future_input = x.new_zeros((batch_size, self.future_size))
             for dec_step in range(self.dec_steps):
                 dec_hx, dec_cx, dec_score = self.decoder(fusion_input, dec_hx, dec_cx)
                 dec_score_stack.append(dec_score)

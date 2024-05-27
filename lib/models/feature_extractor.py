@@ -81,9 +81,33 @@ class THUMOSFeatureExtractor(nn.Module):
             fusion_input = motion_input
         return self.input_linear(fusion_input)
 
+class AssemblyFeatureExtractor(nn.Module):
+    def __init__(self, args):
+        super(AssemblyFeatureExtractor, self).__init__()
+        self.modality = args.modality
+
+        if self.modality == 'embeddings':
+            self.fusion_size = 2048
+        else:
+            self.fusion_size = 42*3
+
+        self.input_linear = nn.Sequential(
+            nn.Linear(self.fusion_size, self.fusion_size),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, data):
+        if self.modality == 'embeddings':
+            x = data
+        else:
+            x = data
+
+        return self.input_linear(x)
+
 _FEATURE_EXTRACTORS = {
     'HDD': HDDFeatureExtractor,
     'THUMOS': THUMOSFeatureExtractor,
+    'Assembly': AssemblyFeatureExtractor
 }
 
 def build_feature_extractor(args):

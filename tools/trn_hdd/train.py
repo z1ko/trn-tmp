@@ -7,7 +7,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import _init_paths
+def add_path(path):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+this_dir = osp.dirname(__file__)
+
+# Add lib to PYTHONPATH
+lib_path = osp.join(this_dir, 'lib')
+add_path(lib_path)
+
 import utils as utl
 from configs.hdd import parse_trn_args as parse_args
 from models import build_model
